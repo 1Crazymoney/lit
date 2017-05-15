@@ -112,6 +112,14 @@ func (lc *litAfClient) Shellparse(cmdslice []string) error {
 		return nil
 	}
 
+	if cmd == "pushprob" {
+		err = lc.PushProb(args)
+		if err != nil {
+			fmt.Fprintf(color.Output, "pushprob error: %s\n", err)
+		}
+		return nil
+	}
+
 	if cmd == "con" { // connect to lnd host
 		err = lc.Connect(args)
 		if err != nil {
@@ -335,6 +343,7 @@ func (lc *litAfClient) Help(textArgs []string) error {
 		fmt.Fprintf(color.Output, "%s\t%s", conCommand.Format, conCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", fundCommand.Format, fundCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", pushCommand.Format, pushCommand.ShortDescription)
+		fmt.Fprintf(color.Output, "%s\t%s", pushProbCommand.Format, pushProbCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", closeCommand.Format, closeCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", breakCommand.Format, breakCommand.ShortDescription)
 		fmt.Fprintf(color.Output, "%s\t%s", offCommand.Format, offCommand.ShortDescription)

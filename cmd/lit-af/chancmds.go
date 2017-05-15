@@ -27,6 +27,15 @@ var pushCommand = &Command{
 	ShortDescription: "Push the given amount (in satoshis) to the other party on the given channel.\n",
 }
 
+var pushProbCommand = &Command{
+	Format: fmt.Sprintf("%s%s%s\n", lnutil.White("pushprob"), lnutil.ReqColor("channel idx", "amount", "odds"), lnutil.OptColor("times")),
+	Description: fmt.Sprintf("%s\n%s\n%s\n",
+		"Probabilistically push the given amount (in satoshis) to the other party on",
+		"the given channel with probability 1/odds.",
+		"Optionally, the push operation can be repeated <times> number of times."),
+	ShortDescription: "Maybe push the given amount (in satoshis) to the other party on the given channel.\n",
+}
+
 var closeCommand = &Command{
 	Format: fmt.Sprintf("%s%s\n", lnutil.White("close"), lnutil.ReqColor("channel idx")),
 	Description: fmt.Sprintf("%s\n%s\n%s%s\n",
@@ -192,6 +201,59 @@ func (lc *litAfClient) Push(textArgs []string) error {
 
 	for times > 0 {
 		err := lc.rpccon.Call("LitRPC.Push", args, reply)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(color.Output, "Pushed %s at state %s\n", lnutil.SatoshiColor(int64(amt)), lnutil.White(reply.StateIndex))
+		times--
+	}
+
+	return nil
+}
+
+// Like Push, but with probabilistic payments
+func (lc *litAfClient) PushProb(textArgs []string) error {
+	if len(textArgs) > 0 && textArgs[0] == "-h" {
+		fmt.Fprintf(color.Output, pushProbCommand.Format)
+		fmt.Fprintf(color.Output, pushProbCommand.Description)
+		return nil
+	}
+
+	args := new(litrpc.PushProbArgs)
+	reply := new(litrpc.PushProbReply)
+
+	if len(textArgs) < 3 {
+		return fmt.Errorf("need args: push chanIdx amt odds (times)")
+	}
+
+	// this stuff is all the same as in cclose, should put into a function...
+	cIdx, err := strconv.Atoi(textArgs[0])
+	if err != nil {
+		return err
+	}
+	amt, err := strconv.Atoi(textArgs[1])
+	if err != nil {
+		return err
+	}
+	odds, err := strconv.Atoi(textArgs[2])
+	if err != nil {
+		return err
+	}
+
+	times := int(1)
+	if len(textArgs) > 3 {
+		times, err = strconv.Atoi(textArgs[3])
+		if err != nil {
+			return err
+		}
+	}
+
+	args.ChanIdx = uint32(cIdx)
+	args.Amt = int64(amt)
+	args.Odds = uint32(odds)
+
+	for times > 0 {
+		err := lc.rpccon.Call("LitRPC.PushProb", args, reply)
 		if err != nil {
 			return err
 		}

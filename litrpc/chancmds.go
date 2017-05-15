@@ -183,6 +183,73 @@ func (r *LitRPC) Push(args PushArgs, reply *PushReply) error {
 	return nil
 }
 
+// ------------------------- pushprob
+type PushProbArgs struct {
+	ChanIdx uint32
+	Amt     int64
+	Odds    uint32
+}
+type PushProbReply struct {
+	StateIndex uint64
+}
+
+// Like Push, but has a chance of 1/Odds of actually going through
+func (r *LitRPC) PushProb(args PushProbArgs, reply *PushProbReply) error {
+
+
+	return fmt.Errorf("not yet implemented")
+	
+	if args.Amt > 100000000 || args.Amt < 1 {
+		return fmt.Errorf(
+			"can't push %d max is 1 coin (100000000), min is 1", args.Amt)
+	}
+
+	fmt.Printf("push %d to chan %d\n", args.Amt, args.ChanIdx)
+
+	// load the whole channel from disk just to see who the peer is
+	// (pretty inefficient)
+	dummyqc, err := r.Node.GetQchanByIdx(args.ChanIdx)
+	if err != nil {
+		return err
+	}
+	// see if channel is closed and error early
+	if dummyqc.CloseData.Closed {
+		return fmt.Errorf("Can't push; channel %d closed", args.ChanIdx)
+	}
+
+	// but we want to reference the qc that's already in ram
+	// first see if we're connected to that peer
+
+	// map read, need mutex...?
+	r.Node.RemoteMtx.Lock()
+	peer, ok := r.Node.RemoteCons[dummyqc.Peer()]
+	r.Node.RemoteMtx.Unlock()
+	if !ok {
+		return fmt.Errorf("not connected to peer %d for channel %d",
+			dummyqc.Peer(), dummyqc.Idx())
+	}
+	qc, ok := peer.QCs[dummyqc.Idx()]
+	if !ok {
+		return fmt.Errorf("peer %d doesn't have channel %d",
+			dummyqc.Peer(), dummyqc.Idx())
+	}
+
+	fmt.Printf("channel %s\n", qc.Op.String())
+
+	if qc.CloseData.Closed {
+		return fmt.Errorf("Channel %d already closed by tx %s",
+			args.ChanIdx, qc.CloseData.CloseTxid.String())
+	}
+
+	err = r.Node.PushChannel(qc, uint32(args.Amt))
+	if err != nil {
+		return err
+	}
+
+	reply.StateIndex = qc.State.StateIdx
+	return nil
+}
+
 // ------------------------- cclose
 type ChanArgs struct {
 	ChanIdx uint32
