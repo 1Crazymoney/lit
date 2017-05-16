@@ -222,6 +222,33 @@ func (nd *LitNode) PushPullHandler(routedMsg lnutil.LitMsg, q *Qchan) error {
 
 }
 
+func (nd *LitNode) ProbPushPullHandler(routedMsg lnutil.LitMsg, q *Qchan) error {
+	switch message := routedMsg.(type) {
+	case lnutil.ProbInitMsg:
+		fmt.Printf("Got PROBINIT from %x\n", routedMsg.Peer())
+		return nd.ProbInitHandler(message, q)
+
+	case lnutil.ProbCommitMsg:
+		fmt.Printf("Got PROBCOMMIT from %x\n", routedMsg.Peer())
+		return nd.ProbCommitHandler(message, q)
+
+	case lnutil.ProbOfferMsg:
+		fmt.Printf("Got PROBOFFER from %x\n", routedMsg.Peer())
+		return nd.ProbOfferHandler(message, q)
+
+	case lnutil.ProbChoiceMsg:
+		fmt.Printf("Got PROBCHOICE from %x\n", routedMsg.Peer())
+		return nd.ProbChoiceHandler(message, q)
+
+	case lnutil.ProbRevealMsg:
+		fmt.Printf("Got PROBREVEAL from %x\n", routedMsg.Peer())
+		return nd.ProbRevealHandler(message, q)
+
+	default:
+		return fmt.Errorf("Unknown message type %x", routedMsg.MsgType())
+	}
+}
+
 func (nd *LitNode) FWDHandler(msg lnutil.LitMsg) error { // not yet implemented
 	switch message := msg.(type) {
 	default:

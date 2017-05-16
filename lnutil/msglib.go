@@ -41,6 +41,13 @@ const (
 	MSGID_WATCH_DESC   = 0x60 // desc describes a new channel
 	MSGID_WATCH_COMMSG = 0x61 // commsg is a single state in the channel
 	MSGID_WATCH_DELETE = 0x62 // Watch_clear marks a channel as ok to delete.  No further updates possible.
+
+	//Probabilistic Push Pull Messages
+	MSGID_PROBINIT = 0x80 // request commitments, send odds
+	MSGID_PROBCOMMIT = 0x81 // commitments from receiver
+	MSGID_PROBOFFER = 0x82 // signatures of new states, sending hashed secret
+	MSGID_PROBCHOICE = 0x83 // commitment to single tx, send secrets, revoke previous
+	MSGID_PROBREVEAL = 0x84 // revoke previous state, reveal secret preimage
 )
 
 //interface that all messages follow, for easy use
@@ -107,6 +114,17 @@ func LitMsgFromBytes(b []byte, peerid uint32) (LitMsg, error) {
 	/*
 		case MSGID_WATCH_DELETE:
 	*/
+
+	case MSGID_PROBINIT:
+		return NewProbInitMsgFromBytes(b, peerid)
+	case MSGID_PROBCOMMIT:
+		return NewProbCommitMsgFromBytes(b, peerid)
+	case MSGID_PROBOFFER:
+		return NewProbOfferMsgFromBytes(b, peerid)
+	case MSGID_PROBCHOICE:
+		return NewProbChoiceMsgFromBytes(b, peerid)
+	case MSGID_PROBREVEAL:
+		return NewProbRevealMsgFromBytes(b, peerid)
 
 	default:
 		return nil, fmt.Errorf("Unknown message of type %d ", msgType)
@@ -755,6 +773,280 @@ func (self WatchDescMsg) Peer() uint32   { return self.PeerIdx }
 func (self WatchDescMsg) MsgType() uint8 { return MSGID_WATCH_DESC }
 
 // the message describing the next commitment tx, sent from the client to the watchtower
+
+type ProbInitMsg struct {
+	PeerIdx  uint32
+	Outpoint wire.OutPoint
+	Amt      uint32
+	NumTxs   uint8
+}
+
+func NewProbInitMsg(peerid uint32, OP wire.OutPoint, amt uint32, numTxs uint8) ProbInitMsg {
+	m := new(ProbInitMsg)
+	m.PeerIdx = peerid
+	m.Outpoint = OP
+	m.Amt = amt
+	m.NumTxs = numTxs
+	return *m
+}
+
+func NewProbInitMsgFromBytes(b []byte, peerid uint32) (ProbInitMsg, error) {
+	m := new(ProbInitMsg)
+	m.PeerIdx = peerid
+
+	if len(b) < 42 {
+		return *m, fmt.Errorf("got %d byte ProbInit, expect 42", len(b))
+	}
+
+	buf := bytes.NewBuffer(b[1:]) // get rid of messageType
+
+	var op [36]byte
+	copy(op[:], buf.Next(36))
+	m.Outpoint = *OutPointFromBytes(op)
+
+	// deserialize ProbInit
+	m.Amt = BtU32(buf.Next(4))
+	m.NumTxs = BtU8(buf.Next(1))
+	return *m, nil
+}
+
+func (self ProbInitMsg) Bytes() []byte {
+	var msg []byte
+	msg = append(msg, self.MsgType())
+	opArr := OutPointToBytes(self.Outpoint)
+	msg = append(msg, opArr[:]...)
+	msg = append(msg, U32tB(self.Amt)...)
+	msg = append(msg, U8tB(self.NumTxs)...)
+	return msg
+}
+
+func (self ProbInitMsg) Peer() uint32 { return self.PeerIdx }
+func (self ProbInitMsg) MsgType() uint8 { return MSGID_PROBINIT }
+
+type ProbCommitMsg struct {
+	PeerIdx  uint32
+	Outpoint wire.OutPoint
+	Revoc    [10][20]byte
+}
+
+func NewProbCommitMsg(peerid uint32, OP wire.OutPoint, revoc [10][20]byte) ProbCommitMsg {
+	m := new(ProbCommitMsg)
+	m.PeerIdx = peerid
+	m.Outpoint = OP
+	m.Revoc = revoc
+	return *m
+}
+
+func NewProbCommitMsgFromBytes(b []byte, peerid uint32) (ProbCommitMsg, error) {
+	m := new(ProbCommitMsg)
+	m.PeerIdx = peerid
+
+	if len(b) < 237 {
+		return *m, fmt.Errorf("got %d byte ProbCommit, expect 237", len(b))
+	}
+
+	buf := bytes.NewBuffer(b[1:]) // get rid of messageType
+
+	var op [36]byte
+	copy(op[:], buf.Next(36))
+	m.Outpoint = *OutPointFromBytes(op)
+
+	// deserialize ProbCommit
+	for i := 0; i < 10; i++ {
+		copy(m.Revoc[i][:], buf.Next(20))
+	}
+	return *m, nil
+}
+
+func (self ProbCommitMsg) Bytes() []byte {
+	var msg []byte
+	msg = append(msg, self.MsgType())
+	opArr := OutPointToBytes(self.Outpoint)
+	msg = append(msg, opArr[:]...)
+	for i := 0; i < 10; i++ {
+		msg = append(msg, self.Revoc[i][:]...)
+	}
+	return msg
+}
+
+func (self ProbCommitMsg) Peer() uint32 { return self.PeerIdx }
+func (self ProbCommitMsg) MsgType() uint8 { return MSGID_PROBCOMMIT }
+
+type ProbOfferMsg struct {
+	PeerIdx  uint32
+	Outpoint wire.OutPoint
+	Secret   [20]byte
+	Sigs     [10][64]byte
+}
+
+func NewProbOfferMsg(peerid uint32, OP wire.OutPoint, secret [20]byte, sigs [10][64]byte) ProbOfferMsg {
+	m := new(ProbOfferMsg)
+	m.PeerIdx = peerid
+	m.Outpoint = OP
+	m.Secret = secret
+	m.Sigs = sigs
+	return *m
+}
+
+func NewProbOfferMsgFromBytes(b []byte, peerid uint32) (ProbOfferMsg, error) {
+	m := new(ProbOfferMsg)
+	m.PeerIdx = peerid
+
+	if len(b) < 697 {
+		return *m, fmt.Errorf("got %d byte ProbOffer, expect 697", len(b))
+	}
+
+	buf := bytes.NewBuffer(b[1:])
+
+	var op [36]byte
+	copy(op[:], buf.Next(36))
+	m.Outpoint = *OutPointFromBytes(op)
+
+	// deserialize ProbOffer
+	copy(m.Secret[:], buf.Next(20))
+	for i := 0; i < 10; i++ {
+		copy(m.Sigs[i][:], buf.Next(64))
+	}
+	return *m, nil
+}
+
+func (self ProbOfferMsg) Bytes() []byte {
+	var msg []byte
+	msg = append(msg, self.MsgType())
+	opArr := OutPointToBytes(self.Outpoint)
+	msg = append(msg, opArr[:]...)
+	msg = append(msg, self.Secret[:]...)
+	for i := 0; i < 10; i++ {
+		msg = append(msg, self.Sigs[i][:]...)
+	}
+	return msg
+}
+
+func (self ProbOfferMsg) Peer() uint32 { return self.PeerIdx }
+func (self ProbOfferMsg) MsgType() uint8 { return MSGID_PROBOFFER }
+
+type ProbChoiceMsg struct {
+	PeerIdx    uint32
+	Outpoint   wire.OutPoint
+	Choice     uint8
+	RevocPre   [10][20]byte
+	Signature  [64]byte
+	Elk        chainhash.Hash
+	N2ElkPoint [33]byte
+}
+
+func NewProbChoiceMsg(peerid uint32, OP wire.OutPoint, choice uint8, revocpre [10][20]byte, sig [64]byte, elk chainhash.Hash, n2elk [33]byte) ProbChoiceMsg {
+	m := new(ProbChoiceMsg)
+	m.PeerIdx = peerid
+	m.Outpoint = OP
+	m.Choice = choice
+	m.RevocPre = revocpre
+	m.Signature = sig
+	m.Elk = elk
+	m.N2ElkPoint = n2elk
+	return *m
+}
+
+func NewProbChoiceMsgFromBytes(b []byte, peerid uint32) (ProbChoiceMsg, error) {
+	m := new(ProbChoiceMsg)
+	m.PeerIdx = peerid
+
+	if len(b) < 367 {
+		return *m, fmt.Errorf("got %d byte ProbChoice, expect 367", len(b))
+	}
+
+	buf := bytes.NewBuffer(b[1:])
+
+	var op [36]byte
+	copy(op[:], buf.Next(36))
+	m.Outpoint = *OutPointFromBytes(op)
+
+	// deserialize ProbChoice
+	m.Choice = BtU8(buf.Next(1))
+	for i := 0; i < 10; i++ {
+		copy(m.RevocPre[i][:], buf.Next(20))
+	}
+	copy(m.Signature[:], buf.Next(64))
+	elk, _ := chainhash.NewHash(buf.Next(32))
+	m.Elk = *elk
+	copy(m.N2ElkPoint[:], buf.Next(33))
+	return *m, nil
+}
+
+func (self ProbChoiceMsg) Bytes() []byte {
+	var msg []byte
+	msg = append(msg, self.MsgType())
+	opArr := OutPointToBytes(self.Outpoint)
+	msg = append(msg, opArr[:]...)
+	msg = append(msg, U8tB(self.Choice)...)
+	for i := 0; i < 10; i++ {
+		msg = append(msg, self.RevocPre[i][:]...)
+	}
+	msg = append(msg, self.Signature[:]...)
+	msg = append(msg, self.Elk[:]...)
+	msg = append(msg, self.N2ElkPoint[:]...)
+	return msg
+}
+
+func (self ProbChoiceMsg) Peer() uint32 { return self.PeerIdx }
+func (self ProbChoiceMsg) MsgType() uint8 { return MSGID_PROBCHOICE }
+
+type ProbRevealMsg struct {
+	PeerIdx    uint32
+	Outpoint   wire.OutPoint
+	Correct    uint8
+	SecretPre  [29]byte
+	Elk        chainhash.Hash
+	N2ElkPoint [33]byte
+}
+
+func NewProbRevealMsg(peerid uint32, OP wire.OutPoint, correct uint8, secretpre [29]byte, elk chainhash.Hash, n2elk [33]byte) ProbRevealMsg {
+	m := new(ProbRevealMsg)
+	m.PeerIdx = peerid
+	m.Outpoint = OP
+	m.Correct = correct
+	m.SecretPre = secretpre
+	m.Elk = elk
+	m.N2ElkPoint = n2elk
+	return *m
+}
+
+func NewProbRevealMsgFromBytes(b []byte, peerid uint32) (ProbRevealMsg, error) {
+	m := new(ProbRevealMsg)
+	m.PeerIdx = peerid
+
+	if len(b) < 132 {
+		return *m, fmt.Errorf("got %d byte ProbReveal, expect 132", len(b))
+	}
+
+	buf := bytes.NewBuffer(b[1:])
+
+	var op [36]byte
+	copy(op[:], buf.Next(36))
+	m.Outpoint = *OutPointFromBytes(op)
+
+	// deserialize ProbReveal
+	m.Correct = BtU8(buf.Next(1))
+	copy(m.SecretPre[:], buf.Next(29))
+	elk, _ := chainhash.NewHash(buf.Next(32))
+	m.Elk = *elk
+	copy(m.N2ElkPoint[:], buf.Next(33))
+	return *m, nil
+}
+
+func (self ProbRevealMsg) Bytes() []byte {
+	var msg []byte
+	msg = append(msg, self.MsgType())
+	opArr := OutPointToBytes(self.Outpoint)
+	msg = append(msg, opArr[:]...)
+	msg = append(msg, U8tB(self.Correct)...)
+	msg = append(msg, self.Elk[:]...)
+	msg = append(msg, self.N2ElkPoint[:]...)
+	return msg
+}
+
+func (self ProbRevealMsg) Peer() uint32 { return self.PeerIdx }
+func (self ProbRevealMsg) MsgType() uint8 { return MSGID_PROBREVEAL }
 
 // ComMsg are 132 bytes.
 // PKH 20

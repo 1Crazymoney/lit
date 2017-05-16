@@ -132,6 +132,53 @@ func (nd *LitNode) SignState(q *Qchan) ([64]byte, error) {
 	return sig, nil
 }
 
+// Signs ALL the things
+func (nd *LitNode) SignProbStates(q *Qchan, amPaying bool) ([10][64]byte, error) {
+
+	var sigs [10][64]byte
+
+	if q == nil {
+		return sigs, fmt.Errorf("SignProbStates nil channel")
+	}
+	_, ok := nd.SubWallet[q.Coin()]
+	if !ok {
+		return sigs, fmt.Errorf("SignProbStates no wallet for cointype %d", q.Coin())
+	}
+
+	txs, err := q.BuildProbStateTxs(false, amPaying)
+	if err != nil {
+		return sigs, err
+	}
+
+	for txnum := uint8(0); txnum < q.State.NumTxs; txnum++ {
+		var sig [64]byte
+		
+		tx := txs[txnum]
+
+		hCache := txscript.NewTxSigHashes(tx)
+
+		pre, _, err := lnutil.FundTxScript(q.MyPub, q.TheirPub)
+		if err != nil {
+			return sigs, err
+		}
+
+		priv := nd.SubWallet[q.Coin()].GetPriv(q.KeyGen)
+
+		bigSig, err := txscript.RawTxInWitnessSignature(
+			tx, hCache, 0, q.Value, pre, txscript.SigHashAll, priv)
+		bigSig = bigSig[:len(bigSig)-1]
+
+		sig, err = sig64.SigCompress(bigSig)
+		if err != nil {
+			return sigs, err
+		}
+
+		sigs[txnum] = sig
+	}
+
+	return sigs, nil
+}
+
 // VerifySig verifies their signature for your next state.
 // it also saves the sig if it's good.
 // do bool, error or just error?  Bad sig is an error I guess.

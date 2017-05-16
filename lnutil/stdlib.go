@@ -8,6 +8,25 @@ import (
 
 // I shouldn't even have to write these...
 
+// uint8 to 1 byte.  Always works.
+func U8tB(i uint8) []byte {
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.BigEndian, i)
+	return buf.Bytes()
+}
+
+// 1 byte slice to uint8.  Returns ff if something doesn't work.
+func BtU8(b []byte) uint8 {
+	if len(b) != 1 {
+		fmt.Printf("Got %x to BtU8 (%d bytes)\n", b, len(b))
+		return 0xff
+	}
+	var i uint8
+	buf := bytes.NewBuffer(b)
+	binary.Read(buf, binary.BigEndian, &i)
+	return i
+}
+
 // int32 to 4 bytes.  Always works.
 func I32tB(i int32) []byte {
 	var buf bytes.Buffer

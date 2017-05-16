@@ -245,8 +245,7 @@ func (r *LitRPC) PushProb(args PushProbArgs, reply *PushProbReply) error {
 			args.ChanIdx, qc.CloseData.CloseTxid.String())
 	}
 
-	//err = r.Node.PushProbChannel(qc, uint32(args.Amt), args.Odds)
-	err = r.Node.PushChannel(qc, uint32(args.Amt))
+	err = r.Node.PushProbChannel(qc, uint32(args.Amt), uint8(args.Odds))
 	if err != nil {
 		return err
 	}

@@ -192,8 +192,8 @@ func (q *Qchan) BuildProbStateTxs(mine, amPaying bool) ([]*wire.MsgTx, error) {
 	if s == nil {
 		return nil, fmt.Errorf("channel (%d,%d) has no state", q.KeyGen.Step[3], q.KeyGen.Step[4])
 	}
-	if s.numTxs < 2 || s.numTxs > 10 {
-		return nil, fmt.Errorf("invalid odds %d", s.numTxs)
+	if s.NumTxs < 2 || s.NumTxs > 10 {
+		return nil, fmt.Errorf("invalid odds %d", s.NumTxs)
 	}
 	
 	var fancyAmt, pkhAmt, probAmt int64  // output amounts
@@ -253,8 +253,6 @@ func (q *Qchan) BuildProbStateTxs(mine, amPaying bool) ([]*wire.MsgTx, error) {
 		recPub = revPub
 		sendPub = timePub
 	}
-	
-
 
 	fmt.Printf("> made SH script, state %d\n", s.StateIdx)
 	fmt.Printf("\t revPub %x timeout pub %x \n", revPub, timePub)
@@ -270,10 +268,10 @@ func (q *Qchan) BuildProbStateTxs(mine, amPaying bool) ([]*wire.MsgTx, error) {
 
 	fmt.Printf("\tcombined refund %x, pkh %x\n", pkhPub, outPKH.PkScript)
 
-	txs := make([]*wire.MsgTx, s.numTxs)
+	txs := make([]*wire.MsgTx, s.NumTxs)
 	
-	for txNum := uint8(0); txNum < s.numTxs; txNum++ {
-		probScript := lnutil.ProbScript(sendPub, recPub, s.Revoc, s.Secret, 0, q.Delay)
+	for txNum := uint8(0); txNum < s.NumTxs; txNum++ {
+		probScript := lnutil.ProbScript(sendPub, recPub, s.Revoc[txNum], s.Secret, txNum, q.Delay)
 		probScript = lnutil.P2WSHify(probScript)
 		outProb := wire.NewTxOut(probAmt, probScript)
 		
