@@ -136,6 +136,14 @@ func (nd *LitNode) ProbCommitHandler(msg lnutil.ProbCommitMsg, qc *Qchan) error 
 
 	// life is good and adversaries don't actually exist
 	qc.State.Revoc = revoc
+	
+	randInt, err := rand.Int(rand.Reader, big.NewInt(int64(qc.State.NumTxs)))
+	if err != nil {
+		return err
+	}
+	qc.State.Correct = uint8(randInt.Uint64())
+	rand.Read(qc.State.SecretPre[:])
+	copy(qc.State.Secret[:], btcutil.Hash160(qc.State.SecretPre[:20+qc.State.Correct]))
 
 	err = nd.SaveQchanState(qc)
 	if err != nil {
@@ -153,17 +161,6 @@ func (nd *LitNode) ProbCommitHandler(msg lnutil.ProbCommitMsg, qc *Qchan) error 
 func (nd *LitNode) SendProbOffer(q *Qchan) error {
 	q.State.ElkPoint = q.State.NextElkPoint
 	q.State.NextElkPoint = q.State.N2ElkPoint
-
-	fmt.Println(q.State.NumTxs)
-	fmt.Println(int64(q.State.NumTxs))
-	randInt, err := rand.Int(rand.Reader, big.NewInt(int64(q.State.NumTxs)))
-	if err != nil {
-		return err
-	}
-	q.State.Correct = uint8(randInt.Uint64())
-	
-	rand.Read(q.State.SecretPre[:])
-	copy(q.State.Secret[:], btcutil.Hash160(q.State.SecretPre[:20+q.State.Correct]))
 	
 	sigs, err := nd.SignProbStates(q, true)
 	if err != nil {
@@ -251,6 +248,10 @@ func (nd *LitNode) ProbChoiceHandler(msg lnutil.ProbChoiceMsg, qc *Qchan) error 
 	}
 
 	// TODO: save, and potentially, use, the prehashes just received
+
+	if qc.State.Correct != msg.Choice {
+		qc.State.MyAmt += int64(qc.State.ProbAmt)
+	}
 	
 	err = nd.SaveQchanState(qc)
 	if err != nil {
@@ -296,6 +297,10 @@ func (nd *LitNode) ProbRevealHandler(msg lnutil.ProbRevealMsg, qc *Qchan) error 
 	err = qc.AdvanceElkrem(&msg.Elk, msg.N2ElkPoint)
 	if err != nil {
 		return fmt.Errorf("ProbRevealHandler AdvanceElkrem err %s", err.Error())
+	}
+
+	if qc.State.Choice == msg.Correct {
+		qc.State.MyAmt += int64(qc.State.ProbAmt)
 	}
 
 	err = nd.SaveQchanState(qc)
