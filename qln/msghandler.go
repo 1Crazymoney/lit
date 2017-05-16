@@ -46,6 +46,12 @@ func (nd *LitNode) PeerHandler(msg lnutil.LitMsg, q *Qchan, peer *RemotePeer) er
 		}
 		return nd.Tower.HandleMessage(msg)
 
+	case 0x80: //ProbPushPull
+		if q == nil {
+			return fmt.Errorf("probpushpull message but no matching channel")
+		}
+		return nd.ProbPushPullHandler(msg, q)
+
 	default:
 		return fmt.Errorf("Unknown message id byte %x &f0", msg.MsgType())
 

@@ -12,6 +12,7 @@ import (
 const minBalHere = 10000 // channels have to have 10K sat in them; can make variable later.
 
 func (nd *LitNode) PushProbChannel(qc *Qchan, amt uint32, numtxs uint8) error {
+	fmt.Println("Starting PushProbChannel")
 	// sanity checks
 	if amt != 1 {
 		return fmt.Errorf("can only send exactly one satoshi")
@@ -65,10 +66,13 @@ func (nd *LitNode) PushProbChannel(qc *Qchan, amt uint32, numtxs uint8) error {
 		return err
 	}
 
+	fmt.Println("Before the queue")
+	
 	// update CTS queue
 	<-qc.ClearToSend
 	qc.ClearToSend <- true
 
+	fmt.Println("Done with PushProbChannel")
 	return nil
 }
 
