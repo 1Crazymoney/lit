@@ -30,7 +30,7 @@ and the stateidx.  hash160(elkremsend(sIdx)[:16])
 
 */
 
-// ToBytes turns a StatCom into 192ish bytes
+// ToBytes turns a StatCom into 657ish bytes
 func (s *StatCom) ToBytes() ([]byte, error) {
 	var buf bytes.Buffer
 	var err error
@@ -89,14 +89,67 @@ func (s *StatCom) ToBytes() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// 4 bytes
+	err = binary.Write(&buf, binary.BigEndian, s.ProbAmt)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1 byte
+	err = binary.Write(&buf, binary.BigEndian, s.NumTxs)
+	if err != nil {
+		return nil, err
+	}
+
+	// 200 bytes
+	for i := 0; i < 10; i++ {
+		_, err = buf.Write(s.Revoc[i][:])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 20 bytes
+	_, err = buf.Write(s.Secret[:])
+	if err != nil {
+		return nil, err
+	}
+
+	// 200 bytes
+	for i := 0; i < 10; i++ {
+		_, err = buf.Write(s.RevocPre[i][:])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 29 bytes
+	_, err = buf.Write(s.SecretPre[:])
+	if err != nil {
+		return nil, err
+	}
+
+	// 1 byte
+	err = binary.Write(&buf, binary.BigEndian, s.Correct)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1 byte
+	err = binary.Write(&buf, binary.BigEndian, s.Choice)
+	if err != nil {
+		return nil, err
+	}
+	
 	return buf.Bytes(), nil
 }
 
-// StatComFromBytes turns 192 bytes into a StatCom
+// StatComFromBytes turns 657 bytes into a StatCom
 func StatComFromBytes(b []byte) (*StatCom, error) {
 	var s StatCom
-	if len(b) < 203 || len(b) > 203 {
-		return nil, fmt.Errorf("StatComFromBytes got %d bytes, expect 203",
+	if len(b) < 657 || len(b) > 657 {
+		return nil, fmt.Errorf("StatComFromBytes got %d bytes, expect 657",
 			len(b))
 	}
 	buf := bytes.NewBuffer(b)
@@ -140,6 +193,38 @@ func StatComFromBytes(b []byte) (*StatCom, error) {
 
 	// the rest is their sig
 	copy(s.sig[:], buf.Next(64))
+
+	err = binary.Read(buf, binary.BigEndian, &s.ProbAmt)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Read(buf, binary.BigEndian, &s.NumTxs)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := 0; i < 10; i++ {
+		copy(s.Revoc[i][:], buf.Next(20))
+	}
+
+	copy(s.Secret[:], buf.Next(20))
+
+	for i := 0; i < 10; i++ {
+		copy(s.RevocPre[i][:], buf.Next(20))
+	}
+
+	copy(s.SecretPre[:], buf.Next(29))
+
+	err = binary.Read(buf, binary.BigEndian, &s.Correct)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Read(buf, binary.BigEndian, &s.Choice)
+	if err != nil {
+		return nil, err
+	}
 
 	return &s, nil
 }

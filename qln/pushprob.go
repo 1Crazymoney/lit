@@ -53,7 +53,9 @@ func (nd *LitNode) PushProbChannel(qc *Qchan, amt uint32, numtxs uint8) error {
 
 	qc.State.NumTxs = numtxs
 	qc.State.ProbAmt = amt
-	// save to db with ONLY NumTxs and ProbAmt changed
+	qc.State.StateIdx++
+	qc.State.MyAmt -= int64(qc.State.ProbAmt)
+	// save to db with everything changed. this is dumb
 	err = nd.SaveQchanState(qc)
 	if err != nil {
 		// don't clear to send here; something is wrong with the channel
@@ -77,9 +79,6 @@ func (nd *LitNode) PushProbChannel(qc *Qchan, amt uint32, numtxs uint8) error {
 }
 
 func (nd *LitNode) SendProbInit(q *Qchan) error {
-	q.State.StateIdx++
-	q.State.MyAmt -= int64(q.State.ProbAmt)
-
 	outMsg := lnutil.NewProbInitMsg(q.Peer(), q.Op, q.State.ProbAmt, q.State.NumTxs)
 	nd.OmniOut <- outMsg
 
@@ -101,6 +100,11 @@ func (nd *LitNode) ProbInitHandler(msg lnutil.ProbInitMsg, qc *Qchan) error {
 	qc.State.ProbAmt = probamt
 	qc.State.NumTxs = numtxs
 	qc.State.StateIdx++
+	
+	for txnum := uint8(8); txnum < qc.State.NumTxs; txnum++ {
+		rand.Read(qc.State.RevocPre[txnum][:])
+		copy(qc.State.Revoc[txnum][:], btcutil.Hash160(qc.State.RevocPre[txnum][:]))
+	}
 
 	err = nd.SaveQchanState(qc)
 	if err != nil {
@@ -116,11 +120,6 @@ func (nd *LitNode) ProbInitHandler(msg lnutil.ProbInitMsg, qc *Qchan) error {
 }
 
 func (nd *LitNode) SendProbCommit(q *Qchan) error {
-	for txnum := uint8(8); txnum < q.State.NumTxs; txnum++ {
-		rand.Read(q.State.RevocPre[txnum][:])
-		copy(q.State.Revoc[txnum][:], btcutil.Hash160(q.State.RevocPre[txnum][:]))
-	}
-
 	outMsg := lnutil.NewProbCommitMsg(q.Peer(), q.Op, q.State.Revoc)
 	nd.OmniOut <- outMsg
 
@@ -155,6 +154,8 @@ func (nd *LitNode) SendProbOffer(q *Qchan) error {
 	q.State.ElkPoint = q.State.NextElkPoint
 	q.State.NextElkPoint = q.State.N2ElkPoint
 
+	fmt.Println(q.State.NumTxs)
+	fmt.Println(int64(q.State.NumTxs))
 	randInt, err := rand.Int(rand.Reader, big.NewInt(int64(q.State.NumTxs)))
 	if err != nil {
 		return err
