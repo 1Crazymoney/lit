@@ -89,6 +89,7 @@ func (nd *LitNode) ProbInitHandler(msg lnutil.ProbInitMsg, qc *Qchan) error {
 	numtxs := msg.NumTxs
 	probamt := msg.Amt
 
+	<-qc.ClearToSend
 	// assume we don't have a collision... because sanity is important
 
 	err := nd.ReloadQchanState(qc)

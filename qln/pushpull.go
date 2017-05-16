@@ -198,7 +198,7 @@ func (nd LitNode) PushChannel(qc *Qchan, amt uint32) error {
 			return err
 		}
 		qc.ClearToSend <- true
-		return fmt.Errorf("Didn't send.  Recovered though, so try again!")
+		return fmt.Errorf("Didn't send, as delta=%d.  Recovered though, so try again!", qc.State.Delta)
 	}
 
 	qc.State.Delta = int32(-amt)
