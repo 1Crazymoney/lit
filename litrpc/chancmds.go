@@ -194,14 +194,18 @@ type PushProbReply struct {
 }
 
 // Like Push, but has a chance of 1/Odds of actually going through
+// much of this is the same as Push, definitely could do with refactoring...
 func (r *LitRPC) PushProb(args PushProbArgs, reply *PushProbReply) error {
 
-
-	return fmt.Errorf("not yet implemented")
 	
 	if args.Amt > 100000000 || args.Amt < 1 {
 		return fmt.Errorf(
 			"can't push %d max is 1 coin (100000000), min is 1", args.Amt)
+	}
+
+	if args.Odds > 10 || args.Odds < 2 {
+		return fmt.Errorf(
+			"odds %d invalid -- must be 1/N, where 2 <= N <= 10", args.Odds)
 	}
 
 	fmt.Printf("push %d to chan %d\n", args.Amt, args.ChanIdx)
@@ -241,6 +245,7 @@ func (r *LitRPC) PushProb(args PushProbArgs, reply *PushProbReply) error {
 			args.ChanIdx, qc.CloseData.CloseTxid.String())
 	}
 
+	//err = r.Node.PushProbChannel(qc, uint32(args.Amt), args.Odds)
 	err = r.Node.PushChannel(qc, uint32(args.Amt))
 	if err != nil {
 		return err

@@ -181,6 +181,124 @@ func (q *Qchan) BuildStateTx(mine bool) (*wire.MsgTx, error) {
 	return tx, nil
 }
 
+// Like BuildStateTx, but for probabilistic transactions. Returns a series
+// of transactions, either for self or for other, corresponding to choices
+func (q *Qchan) BuildProbStateTxs(mine, amPaying bool) ([]*wire.MsgTx, error) {
+	if q == nil {
+		return nil, fmt.Errorf("BuildProbStateTx: nil chan")
+	}
+	// sanity checks
+	s := q.State // use it a lot, make shorthand variable
+	if s == nil {
+		return nil, fmt.Errorf("channel (%d,%d) has no state", q.KeyGen.Step[3], q.KeyGen.Step[4])
+	}
+	if s.numTxs < 2 || s.numTxs > 10 {
+		return nil, fmt.Errorf("invalid odds %d", s.numTxs)
+	}
+	
+	var fancyAmt, pkhAmt, probAmt int64  // output amounts
+	var revPub, timePub [33]byte         // pubkeys
+	var sendPub, recPub [33]byte         // sender/receiver pubkeys, for prob
+	var pkhPub [33]byte                  // the simple output's pub key hash
+
+	fee := s.Fee // fixed fee for now
+
+	// the PKH clear refund also has elkrem points added to mask the PKH.
+	// this changes the txouts at each state to blind sorceror better.
+	if mine { // build MY tx (to verify) (unless breaking)
+		// My tx that I store.  They get funds unencumbered. SH is mine eventually
+		// SH pubkeys are base points combined with the elk point we give them
+		// Create latest elkrem point (the one I create)
+		curElk, err := q.ElkPoint(false, q.State.StateIdx)
+		if err != nil {
+			return nil, err
+		}
+		revPub = lnutil.CombinePubs(q.TheirHAKDBase, curElk)
+		timePub = lnutil.AddPubsEZ(q.MyHAKDBase, curElk)
+
+		pkhPub = q.TheirRefundPub
+		pkhAmt = (q.Value - s.MyAmt) - fee
+		fancyAmt = s.MyAmt - fee
+
+	} else { // build THEIR tx (to sign)
+		// Their tx that they store.  I get funds PKH.  SH is theirs eventually.
+		fmt.Printf("using elkpoint %x\n", s.ElkPoint)
+		// SH pubkeys are our base points plus the received elk point
+		revPub = lnutil.CombinePubs(q.MyHAKDBase, s.ElkPoint)
+		timePub = lnutil.AddPubsEZ(q.TheirHAKDBase, s.ElkPoint)
+
+		fancyAmt = (q.Value - s.MyAmt) - fee
+
+		// PKH output
+		pkhPub = q.MyRefundPub
+		pkhAmt = s.MyAmt - fee
+	}
+
+	// now that everything is chosen, build fancy script and pkh script
+	fancyScript := lnutil.CommitScript(revPub, timePub, q.Delay)
+	pkhScript := lnutil.DirectWPKHScript(pkhPub) // p2wpkh-ify
+
+	// probabilistic parameters
+	probAmt = 1 // assume that all probabilistic payments are just 1 satoshi
+	if amPaying {
+		fancyAmt -= probAmt // deduct actual exchange amount
+	} else {
+		pkhAmt -= probAmt // deduct actual exchange amount
+	}
+
+	if amPaying != mine {
+		recPub = timePub
+		sendPub = revPub
+	} else {
+		recPub = revPub
+		sendPub = timePub
+	}
+	
+
+
+	fmt.Printf("> made SH script, state %d\n", s.StateIdx)
+	fmt.Printf("\t revPub %x timeout pub %x \n", revPub, timePub)
+	fmt.Printf("\t script %x ", fancyScript)
+
+	fancyScript = lnutil.P2WSHify(fancyScript) // p2wsh-ify
+
+	fmt.Printf("\t scripthash %x\n", fancyScript)
+
+	// create txouts by assigning amounts
+	outFancy := wire.NewTxOut(fancyAmt, fancyScript)
+	outPKH := wire.NewTxOut(pkhAmt, pkhScript)
+
+	fmt.Printf("\tcombined refund %x, pkh %x\n", pkhPub, outPKH.PkScript)
+
+	txs := make([]*wire.MsgTx, s.numTxs)
+	
+	for txNum := uint8(0); txNum < s.numTxs; txNum++ {
+		probScript := lnutil.ProbScript(sendPub, recPub, s.Revoc, s.Secret, 0, q.Delay)
+		probScript = lnutil.P2WSHify(probScript)
+		outProb := wire.NewTxOut(probAmt, probScript)
+		
+		// make a new tx
+		tx := wire.NewMsgTx()
+		// add txouts
+		tx.AddTxOut(outFancy)
+		tx.AddTxOut(outPKH)
+		tx.AddTxOut(outProb)
+		// add unsigned txin
+		tx.AddTxIn(wire.NewTxIn(&q.Op, nil, nil))
+		// set index hints
+
+		// state 0 and 1 can't use mask?  Think they can now.
+		SetStateIdxBits(tx, s.StateIdx, q.GetChanHint(mine))
+
+		// sort outputs
+		txsort.InPlaceSort(tx)
+
+		txs[txNum] = tx
+	}
+	
+	return txs, nil
+}
+
 // the scriptsig to put on a P2SH input.  Sigs need to be in order!
 func SpendMultiSigWitStack(pre, sigA, sigB []byte) [][]byte {
 

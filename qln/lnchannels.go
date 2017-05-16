@@ -73,6 +73,11 @@ type StatCom struct {
 	// sig should have a sig.
 	// only one sig is ever stored, to prevent broadcasting the wrong tx.
 	// could add a mutex here... maybe will later.
+
+	numTxs uint8 // if prob, the number of txos to choose from
+
+	Revoc [20]byte // the hash of the revocable for this transaction "H(Yi)"
+	Secret [20]byte // the hash for this probabilistic transaction "H(X)"
 }
 
 // QCloseData is the output resulting from an un-cooperative close

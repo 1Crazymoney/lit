@@ -41,6 +41,78 @@ func CommitScript(RKey, TKey [33]byte, delay uint16) []byte {
 	return s
 }
 
+func ProbScript(SenderKey, ReceiverKey [33]byte, Revocation, secret [20]byte, txNum uint8, delay uint16) []byte {
+	builder := txscript.NewScriptBuilder()
+
+	// 0 for timeout, 1 for sender reclaim
+	builder.AddOp(txscript.OP_IF)
+
+	//// 1: sender reclaim
+
+	// 0 for hash length reveal, 1 for choice revocation
+	builder.AddOp(txscript.OP_IF)
+
+	//// 1-1: choice revocation
+
+	// hash of revocation on stack
+	builder.AddOp(txscript.OP_HASH160)
+	
+	builder.AddData(Revocation[:])
+
+	// check that hash matches
+	builder.AddOp(txscript.OP_EQUALVERIFY)
+
+	builder.AddOp(txscript.OP_ELSE)
+
+	//// 1-2: hash length reveal
+
+	// get size of preimage (preimage not popped)
+	builder.AddOp(txscript.OP_SIZE)
+
+	// get desired size
+	builder.AddInt64(int64(20 + txNum))
+
+	// verify that preimage is correct length
+	builder.AddOp(txscript.OP_EQUALVERIFY)
+
+	// now hash the preimage
+	builder.AddOp(txscript.OP_HASH160)
+
+	// load desired hash
+	builder.AddData(secret[:])
+
+	// check that the preimage matches
+	builder.AddOp(txscript.OP_EQUALVERIFY)
+
+	builder.AddOp(txscript.OP_ENDIF)
+
+	// in either case, now push the sender's key
+	builder.AddData(SenderKey[:])
+
+	builder.AddOp(txscript.OP_ELSE)
+
+	//// 0: timeout
+
+	builder.AddInt64(int64(delay))
+	
+	builder.AddOp(txscript.OP_NOP3) // CSV
+
+	builder.AddOp(txscript.OP_DROP) // pop the CSV delay
+
+	builder.AddData(ReceiverKey[:])
+
+	builder.AddOp(txscript.OP_ENDIF)
+
+	// check key, sig left on stack
+	builder.AddOp(txscript.OP_CHECKSIG)
+
+	// never any errors we care about here.
+	s, _ := builder.Script()
+	return s
+}
+
+	
+
 // FundMultiPre generates the non-p2sh'd multisig script for 2 of 2 pubkeys.
 // useful for making transactions spending the fundtx.
 // returns a bool which is true if swapping occurs.
