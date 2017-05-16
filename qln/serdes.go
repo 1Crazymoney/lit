@@ -30,7 +30,7 @@ and the stateidx.  hash160(elkremsend(sIdx)[:16])
 
 */
 
-// ToBytes turns a StatCom into 657ish bytes
+// ToBytes turns a StatCom into 659ish bytes
 func (s *StatCom) ToBytes() ([]byte, error) {
 	var buf bytes.Buffer
 	var err error
@@ -145,11 +145,11 @@ func (s *StatCom) ToBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// StatComFromBytes turns 657 bytes into a StatCom
+// StatComFromBytes turns 659 bytes into a StatCom
 func StatComFromBytes(b []byte) (*StatCom, error) {
 	var s StatCom
-	if len(b) < 657 || len(b) > 657 {
-		return nil, fmt.Errorf("StatComFromBytes got %d bytes, expect 657",
+	if len(b) < 659 || len(b) > 659 {
+		return nil, fmt.Errorf("StatComFromBytes got %d bytes, expect 659",
 			len(b))
 	}
 	buf := bytes.NewBuffer(b)
